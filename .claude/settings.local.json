@@ -3,7 +3,8 @@
     "allow": [
       "Bash(python -m venv venv)",
       "Bash(./venv/Scripts/pip install:*)",
-      "Bash(./venv/Scripts/pip list:*)"
+      "Bash(./venv/Scripts/pip list:*)",
+      "Bash(./venv/Scripts/python -c ':*)"
     ]
   }
 }
