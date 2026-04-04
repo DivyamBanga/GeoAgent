@@ -3,14 +3,27 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY from env
+client = anthropic.Anthropic()
+conversation = []
 
-message = client.messages.create(
-    model="claude-sonnet-4-20250514",
-    max_tokens=1024,
-    messages=[
-        {"role": "user", "content": "What makes a good location for a coffee shop?"}
-    ]
-)
+system_prompt = """You are GeoAgent, a location intelligence analyst.
+You help people find the best locations for their businesses.
+You think about demographics, competition, foot traffic, and zoning."""
 
-print(message.content[0].text)
+while True:
+    user_input = input("\nYou: ")
+    if user_input.lower() in ("quit", "exit"):
+        break
+
+    conversation.append({"role": "user", "content": user_input})
+
+    response = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=1024,
+        system=system_prompt,
+        messages=conversation
+    )
+
+    assistant_message = response.content[0].text
+    conversation.append({"role": "assistant", "content": assistant_message})
+    print(f"\nGeoAgent: {assistant_message}")
