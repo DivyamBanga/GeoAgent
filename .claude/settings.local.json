@@ -4,7 +4,10 @@
       "Bash(python -m venv venv)",
       "Bash(./venv/Scripts/pip install:*)",
       "Bash(./venv/Scripts/pip list:*)",
-      "Bash(./venv/Scripts/python -c ':*)"
+      "Bash(./venv/Scripts/python -c ':*)",
+      "Bash(python tools.py)",
+      "Bash(python3 tools.py)",
+      "Bash(./venv/Scripts/python tools.py)"
     ]
   }
 }
