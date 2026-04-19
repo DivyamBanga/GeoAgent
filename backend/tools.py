@@ -22,5 +22,41 @@ def get_population(lat: float, lng: float, radius_km: float) -> dict:
         "source": "mock_data"
     }
 
+MOCK_COMPETITORS = [
+    {"name": "Starbucks", "lat": 43.451, "lng": -80.492, "distance_m": 200},
+    {"name": "Williams Fresh Cafe", "lat": 43.449, "lng": -80.488, "distance_m": 450},
+    {"name": "Balzac's Coffee", "lat": 43.453, "lng": -80.495, "distance_m": 600},
+]
+
+MOCK_INCOME = {
+    "kitchener_downtown": {"median_income": 52000, "avg_household_spend": 4200},
+    "waterloo_uptown": {"median_income": 68000, "avg_household_spend": 5100},
+}
+
+def find_competitors(lat: float, lng: float, business_type: str, radius_km: float) -> dict:
+    """Find competing businesses near a location."""
+    # Filter mock competitors within radius (simplified)
+    nearby = [c for c in MOCK_COMPETITORS if c["distance_m"] < radius_km * 1000]
+    return {
+        "competitors": nearby,
+        "total_count": len(nearby),
+        "nearest_distance_m": nearby[0]["distance_m"] if nearby else None,
+        "source": "mock_data"
+    }
+
+def get_median_income(lat: float, lng: float) -> dict:
+    """Get median household income near a location."""
+    if lat > 43.46:
+        data = MOCK_INCOME["waterloo_uptown"]
+    else:
+        data = MOCK_INCOME["kitchener_downtown"]
+    return {**data, "source": "mock_data"}
+
+
 if __name__ == "__main__":
+    print("--- get_population ---")
     print(get_population(43.45, -80.49, 2.0))
+    print("\n--- find_competitors ---")
+    print(find_competitors(43.45, -80.49, "coffee_shop", 1.0))
+    print("\n--- get_median_income ---")
+    print(get_median_income(43.45, -80.49))

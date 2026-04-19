@@ -1,7 +1,7 @@
 import json
 import anthropic
 from dotenv import load_dotenv
-from tools import get_population
+from tools import get_population, find_competitors, get_median_income
 
 load_dotenv()
 
@@ -30,12 +30,58 @@ tools = [
             },
             "required": ["lat", "lng", "radius_km"]
         }
+    },
+    {
+        "name": "find_competitors",
+        "description": "Find competing businesses near a geographic point. Use this when the user asks about competition, nearby businesses, or market saturation in an area.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "lat": {
+                    "type": "number",
+                    "description": "Latitude of the center point"
+                },
+                "lng": {
+                    "type": "number",
+                    "description": "Longitude of the center point"
+                },
+                "business_type": {
+                    "type": "string",
+                    "description": "Type of business to search for (e.g. 'coffee_shop', 'restaurant')"
+                },
+                "radius_km": {
+                    "type": "number",
+                    "description": "Radius in kilometers to search within"
+                }
+            },
+            "required": ["lat", "lng", "business_type", "radius_km"]
+        }
+    },
+    {
+        "name": "get_median_income",
+        "description": "Get the median household income and average household spend near a location. Use this when the user asks about income, spending power, or economic demographics of an area.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "lat": {
+                    "type": "number",
+                    "description": "Latitude of the location"
+                },
+                "lng": {
+                    "type": "number",
+                    "description": "Longitude of the location"
+                }
+            },
+            "required": ["lat", "lng"]
+        }
     }
 ]
 
 # This maps tool names to actual Python functions
 TOOL_FUNCTIONS = {
-    "get_population": get_population
+    "get_population": get_population,
+    "find_competitors": find_competitors,
+    "get_median_income": get_median_income
 }
 
 
