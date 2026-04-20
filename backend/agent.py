@@ -90,10 +90,17 @@ def run_agent(user_message: str) -> str:
     messages = [{"role": "user", "content": user_message}]
 
     system = """You are GeoAgent, a location intelligence analyst.
-    When users ask about locations, use your tools to get real data.
+    When analyzing a location, use ALL relevant tools to gather data.
     Always provide specific numbers from the tools, not guesses.
     If the user mentions Kitchener downtown, use lat=43.45, lng=-80.49.
-    If they mention Waterloo uptown, use lat=43.47, lng=-80.52."""
+    If they mention Waterloo uptown, use lat=43.47, lng=-80.52.
+
+    After gathering data, provide:
+    1. An overall score (0-100) for the location based on the tool scores
+    2. The top 3 positive factors
+    3. The top 3 risks
+    4. A clear recommendation (Go / Caution / Avoid)
+    Format your response clearly with headers."""
 
     # Step 1: Send message to Claude with tool definitions
     response = client.messages.create(
