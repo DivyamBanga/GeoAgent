@@ -1,4 +1,4 @@
-# Hardcoded data for now. We'll replace with PostGIS in Phase 3.
+# Hardcoded data for now. We'll replace with SQLite in Phase 3.
 MOCK_DATA = {
     "kitchener_downtown": {"population": 12500, "area": "Downtown Kitchener"},
     "kitchener_dtr": {"population": 8200, "area": "DTK - Innovation District"},

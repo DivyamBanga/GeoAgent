@@ -4,7 +4,7 @@
 
 GeoAgent is a location intelligence system. You type a question like "Where should I open a coffee shop in Kitchener?" and it gives you a scored recommendation backed by real data — demographics, competition, traffic, zoning — all displayed on an interactive map.
 
-It starts as a single Python script calling Claude. It ends as a multi-agent system with a React frontend, Django backend, PostGIS database, and Leaflet map.
+It starts as a single Python script calling Claude. It ends as a multi-agent system with a React frontend, Django backend, SQLite database, and Leaflet map.
 
 Every phase produces something you can run and test.
 
@@ -17,11 +17,10 @@ Every phase produces something you can run and test.
 | LLM | Claude API (free tier) | Tool use support, Anthropic internship relevance |
 | Agent Framework | LangGraph | Multi-agent orchestration, conditional routing |
 | Backend | Django + Django REST Framework | Python, batteries-included, you know it |
-| Database | PostgreSQL + PostGIS | Spatial queries on real geo data |
+| Database | SQLite | Built into Python, zero setup, just a file |
 | Frontend | React + TypeScript | Modern, component-based UI |
 | Map | Leaflet (react-leaflet) | Free, open-source map rendering |
 | Data | StatsCan Census, Overture Maps, OSM | All free and open |
-| Dev DB | Docker (postgis/postgis image) | Free, no installation headaches |
 
 ---
 
@@ -29,7 +28,7 @@ Every phase produces something you can run and test.
 
 ```
 Phase 1: "Hello Claude" ──> Phase 2: Add tools ──> Phase 3: Real DB
-   (1 script)              (1 script)              (Django + PostGIS)
+   (1 script)              (1 script)              (SQLite + real data)
                                                           │
 Phase 6: Multi-agent <── Phase 5: LangGraph <── Phase 4: Frontend
    (sub-agents)           (graph orchestration)   (React + Leaflet)
@@ -197,7 +196,7 @@ You should now have:
 **File:** `backend/tools.py` (new file)
 
 ```python
-# Hardcoded data for now. We'll replace with PostGIS in Phase 3.
+# Hardcoded data for now. We'll replace with SQLite in Phase 3.
 MOCK_DATA = {
     "kitchener_downtown": {"population": 12500, "area": "Downtown Kitchener"},
     "kitchener_dtr": {"population": 8200, "area": "DTK - Innovation District"},
@@ -503,116 +502,156 @@ GeoAgent/
 
 ---
 
-# PHASE 3: Real Data with PostGIS (Days 7-14)
+# PHASE 3: Real Data with SQLite (Days 7-14)
 
-**Goal:** Replace mock data with real spatial data. Set up PostgreSQL + PostGIS, load Canadian census data and POIs, and make the tools query the actual database.
+**Goal:** Replace mock data with real spatial data. Set up SQLite, load Canadian census data and POIs, and make the tools query the actual database.
 
-**What you'll learn:** PostGIS, spatial queries, loading real geo data, connecting Python to PostgreSQL.
+**What you'll learn:** SQLite, spatial distance calculations (Haversine), loading real geo data, connecting Python to a database.
 
 **What you can test:** Same agent questions as Phase 2, but answers come from real data now.
 
 ---
 
-### Step 3.1: Set up PostGIS with Docker
+### Step 3.1: Set up SQLite database
 
-**What to do:** Run a PostGIS database in Docker. One command, no installation headaches.
+**What to do:** Create a SQLite database file. No installation needed — Python has `sqlite3` built in.
 
 **Substeps:**
-1. Install Docker Desktop if you don't have it (free)
-2. Run the PostGIS container:
-   ```bash
-   docker run --name geoagent-db \
-     -e POSTGRES_USER=geoagent \
-     -e POSTGRES_PASSWORD=geoagent \
-     -e POSTGRES_DB=geoagent \
-     -p 5432:5432 \
-     -d postgis/postgis:16-3.4
+1. Create the `backend/db/` directory
+2. The database will be a single file: `backend/db/geoagent.db`
+3. Add `*.db` to `.gitignore` (database files shouldn't be committed)
+4. Test: open a Python shell and run:
+   ```python
+   import sqlite3
+   conn = sqlite3.connect("backend/db/geoagent.db")
+   conn.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT)")
+   conn.execute("INSERT INTO test VALUES (1, 'hello')")
+   print(conn.execute("SELECT * FROM test").fetchall())
+   conn.execute("DROP TABLE test")
+   conn.close()
    ```
-3. Verify it's running: `docker ps` should show the container
-4. Connect to it: `docker exec -it geoagent-db psql -U geoagent`
-5. Check PostGIS: `SELECT PostGIS_Version();` should return a version
-6. Type `\q` to exit
 
-**Test:** `docker ps` shows the container. `SELECT PostGIS_Version();` returns something like `3.4`.
+**Test:** No errors. You can create tables and query them. That's the whole "setup."
 
 ---
 
 ### Step 3.2: Create the database schema
 
-**What to do:** Create tables for demographics, POIs, roads, and zoning.
+**What to do:** Create tables for demographics, POIs, roads, and zoning. Instead of PostGIS geometry columns, store lat/lng as regular floats and use the Haversine formula for distance calculations.
 
 **File:** `backend/db/schema.sql` (new file)
 
 ```sql
--- Enable PostGIS
-CREATE EXTENSION IF NOT EXISTS postgis;
-
 -- Census demographics (one row per dissemination area)
-CREATE TABLE demographics (
-    id SERIAL PRIMARY KEY,
-    da_id VARCHAR(20) UNIQUE,         -- dissemination area ID
-    province VARCHAR(2),
+CREATE TABLE IF NOT EXISTS demographics (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    da_id TEXT UNIQUE,                -- dissemination area ID
+    province TEXT,
     population INTEGER,
     median_income INTEGER,
-    avg_age NUMERIC(4,1),
+    avg_age REAL,
     total_households INTEGER,
-    geom GEOMETRY(MultiPolygon, 4326)  -- boundary polygon
+    lat REAL,                         -- centroid latitude
+    lng REAL                          -- centroid longitude
 );
 
-CREATE INDEX idx_demographics_geom ON demographics USING GIST (geom);
+CREATE INDEX IF NOT EXISTS idx_demographics_location ON demographics (lat, lng);
 
 -- Points of interest (restaurants, shops, etc.)
-CREATE TABLE pois (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(255),
-    category VARCHAR(100),            -- "coffee_shop", "restaurant", etc.
-    brand VARCHAR(100),
-    address VARCHAR(255),
-    lat NUMERIC(9,6),
-    lng NUMERIC(9,6),
-    geom GEOMETRY(Point, 4326)
+CREATE TABLE IF NOT EXISTS pois (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT,
+    category TEXT,                    -- "coffee_shop", "restaurant", etc.
+    brand TEXT,
+    address TEXT,
+    lat REAL,
+    lng REAL
 );
 
-CREATE INDEX idx_pois_geom ON pois USING GIST (geom);
-CREATE INDEX idx_pois_category ON pois (category);
+CREATE INDEX IF NOT EXISTS idx_pois_category ON pois (category);
+CREATE INDEX IF NOT EXISTS idx_pois_location ON pois (lat, lng);
 
 -- Road network (for traffic estimates)
-CREATE TABLE roads (
-    id SERIAL PRIMARY KEY,
-    road_name VARCHAR(255),
-    road_class VARCHAR(50),           -- "highway", "arterial", "residential"
+CREATE TABLE IF NOT EXISTS roads (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    road_name TEXT,
+    road_class TEXT,                  -- "highway", "arterial", "residential"
     speed_limit INTEGER,
-    geom GEOMETRY(LineString, 4326)
+    lat REAL,                         -- midpoint latitude
+    lng REAL                          -- midpoint longitude
 );
 
-CREATE INDEX idx_roads_geom ON roads USING GIST (geom);
+CREATE INDEX IF NOT EXISTS idx_roads_location ON roads (lat, lng);
 
 -- Zoning areas
-CREATE TABLE zoning (
-    id SERIAL PRIMARY KEY,
-    zone_code VARCHAR(20),
-    zone_type VARCHAR(50),            -- "commercial", "residential", "mixed"
-    permitted_uses TEXT[],             -- array of permitted use types
-    geom GEOMETRY(MultiPolygon, 4326)
+CREATE TABLE IF NOT EXISTS zoning (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    zone_code TEXT,
+    zone_type TEXT,                   -- "commercial", "residential", "mixed"
+    permitted_uses TEXT,              -- comma-separated list of permitted use types
+    lat REAL,                         -- centroid latitude
+    lng REAL                          -- centroid longitude
 );
 
-CREATE INDEX idx_zoning_geom ON zoning USING GIST (geom);
+CREATE INDEX IF NOT EXISTS idx_zoning_location ON zoning (lat, lng);
 ```
 
 **Substeps:**
-1. Create the `backend/db/` directory
-2. Create `schema.sql` with the SQL above
-3. Run it: `docker exec -i geoagent-db psql -U geoagent < backend/db/schema.sql`
-4. Verify: connect to DB and run `\dt` to see all 4 tables
-5. Run `\d demographics` to see the columns
+1. Create `backend/db/schema.sql` with the SQL above
+2. Run it with a small Python script or inline:
+   ```python
+   import sqlite3
+   conn = sqlite3.connect("backend/db/geoagent.db")
+   conn.executescript(open("backend/db/schema.sql").read())
+   conn.close()
+   ```
+3. Verify: connect to DB and check tables exist:
+   ```python
+   conn = sqlite3.connect("backend/db/geoagent.db")
+   tables = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+   print(tables)  # should show demographics, pois, roads, zoning
+   ```
 
-**Test:** `\dt` shows demographics, pois, roads, zoning. `\d demographics` shows all columns including geom.
+**Test:** All 4 tables exist. No Docker, no server, no extensions needed.
 
 ---
 
-### Step 3.3: Download and load census data
+### Step 3.3: Create the Haversine distance helper
 
-**What to do:** Get real Canadian Census data for Kitchener-Waterloo and load it into PostGIS.
+**What to do:** Write a Python function that calculates distance between two lat/lng points. This replaces PostGIS's `ST_DWithin` and `ST_Distance`.
+
+**File:** `backend/db/geo_utils.py` (new file)
+
+```python
+import math
+
+def haversine(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    """Calculate the distance in km between two lat/lng points."""
+    R = 6371  # Earth's radius in km
+    dlat = math.radians(lat2 - lat1)
+    dlng = math.radians(lng2 - lng1)
+    a = (math.sin(dlat / 2) ** 2 +
+         math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) *
+         math.sin(dlng / 2) ** 2)
+    return R * 2 * math.asin(math.sqrt(a))
+```
+
+**Substeps:**
+1. Create `backend/db/geo_utils.py`
+2. Test it:
+   ```python
+   from db.geo_utils import haversine
+   # Downtown Kitchener to Uptown Waterloo ≈ 2.5 km
+   print(haversine(43.45, -80.49, 43.47, -80.52))
+   ```
+
+**Test:** Returns ~2.5 km for downtown Kitchener to uptown Waterloo. That's correct.
+
+---
+
+### Step 3.4: Download and load census data
+
+**What to do:** Get real Canadian Census data for Kitchener-Waterloo and load it into SQLite.
 
 **Data source:** Statistics Canada (all free, open data)
 - Census boundary files: https://www12.statcan.gc.ca/census-recensement/2021/geo/sip-pis/boundary-limites/index2021-eng.cfm
@@ -623,7 +662,7 @@ CREATE INDEX idx_zoning_geom ON zoning USING GIST (geom);
 **File:** `backend/db/load_census.py` (new file)
 
 ```python
-"""Load Canadian Census data into PostGIS.
+"""Load Canadian Census data into SQLite.
 
 Steps:
 1. Download DA boundary shapefile for Ontario from StatsCan
@@ -631,49 +670,59 @@ Steps:
 3. This script loads both into the demographics table
 """
 
-import geopandas as gpd
-import pandas as pd
-from sqlalchemy import create_engine
+import csv
+import sqlite3
 
-DB_URL = "postgresql://geoagent:geoagent@localhost:5432/geoagent"
+DB_PATH = "backend/db/geoagent.db"
 
 def load_boundaries(shapefile_path: str):
-    """Load dissemination area boundaries from shapefile."""
+    """Load dissemination area boundaries from shapefile.
+    Uses geopandas to read the shapefile, extract centroids, and insert into SQLite.
+    """
+    import geopandas as gpd
+
     gdf = gpd.read_file(shapefile_path)
 
     # Filter to Kitchener-Waterloo area (CMA code 541)
-    # Adjust the filter column based on actual shapefile columns
     gdf = gdf[gdf["CMAUID"] == "541"]
 
-    # Keep only what we need
-    gdf = gdf[["DAUID", "PRUID", "geometry"]]
-    gdf = gdf.rename(columns={"DAUID": "da_id", "PRUID": "province"})
-
-    # Ensure correct CRS
+    # Convert to lat/lng (WGS84)
     gdf = gdf.to_crs(epsg=4326)
 
-    engine = create_engine(DB_URL)
-    gdf.to_postgis("demographics", engine, if_exists="append", index=False)
+    # Get centroids for each dissemination area
+    gdf["lat"] = gdf.geometry.centroid.y
+    gdf["lng"] = gdf.geometry.centroid.x
+
+    conn = sqlite3.connect(DB_PATH)
+    for _, row in gdf.iterrows():
+        conn.execute(
+            "INSERT OR IGNORE INTO demographics (da_id, province, lat, lng) VALUES (?, ?, ?, ?)",
+            (row["DAUID"], row["PRUID"], row["lat"], row["lng"])
+        )
+    conn.commit()
+    conn.close()
     print(f"Loaded {len(gdf)} dissemination areas")
 
 def load_census_profile(csv_path: str):
-    """Load census profile data (population, income, age) and join to boundaries."""
-    df = pd.read_csv(csv_path)
+    """Load census profile data (population, income, age) and update demographics rows."""
+    conn = sqlite3.connect(DB_PATH)
 
     # Census profile CSVs have a specific format — you'll need to pivot
     # the rows to get population, income, age as columns.
-    # The exact parsing depends on the CSV format from StatsCan.
     # Key characteristic IDs:
     #   1 = Population 2021
     #   236 = Median total income
     #   39 = Average age
 
-    # This is a simplified version — adjust based on actual CSV structure
-    engine = create_engine(DB_URL)
+    # Parse CSV and update rows — adjust based on actual CSV structure
+    with open(csv_path, "r", encoding="utf-8-sig") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            pass  # Process based on actual StatsCan CSV format
 
-    # Update demographics rows with census data
-    # Use pandas + sqlalchemy to update existing rows
-    print(f"Loaded census profile data for {len(df)} areas")
+    conn.commit()
+    conn.close()
+    print("Loaded census profile data")
 
 if __name__ == "__main__":
     import sys
@@ -687,20 +736,20 @@ if __name__ == "__main__":
 ```
 
 **Substeps:**
-1. `pip install geopandas sqlalchemy psycopg2-binary` (add to requirements.txt)
+1. `pip install geopandas` (only needed for loading shapefiles, add to requirements.txt)
 2. Download the DA boundary shapefile from StatsCan (it's a .zip with .shp files)
 3. Unzip to `backend/db/data/` (add this directory to .gitignore — data files are large)
 4. Run: `python db/load_census.py db/data/lda_000b21a_e.shp`
 5. Verify: `SELECT COUNT(*) FROM demographics;` should show hundreds of rows
-6. Verify spatial: `SELECT da_id, ST_AsText(ST_Centroid(geom)) FROM demographics LIMIT 5;`
-7. Download the census profile CSV and load it (Step 2 of this script)
+6. Verify: `SELECT da_id, lat, lng FROM demographics LIMIT 5;`
+7. Download the census profile CSV and load it
 8. Verify: `SELECT da_id, population, median_income FROM demographics WHERE population > 0 LIMIT 5;`
 
-**Test:** Database has real census boundary polygons and demographic data for KW area.
+**Test:** Database has real census data with centroids for each dissemination area.
 
 ---
 
-### Step 3.4: Load POI data
+### Step 3.5: Load POI data
 
 **What to do:** Load real business/POI data from Overture Maps (free, open dataset).
 
@@ -710,46 +759,43 @@ if __name__ == "__main__":
 **File:** `backend/db/load_pois.py` (new file)
 
 ```python
-"""Load POI data from Overture Maps into PostGIS.
+"""Load POI data from Overture Maps into SQLite.
 
-Option A: Use overturemaps-py CLI
+Download first:
     pip install overturemaps
     overturemaps download --bbox=-80.6,43.35,-80.3,43.55 -t places -o places.geojson
-
-Option B: Use DuckDB to query Overture directly (no download needed)
 """
 
-import geopandas as gpd
-from sqlalchemy import create_engine
+import json
+import sqlite3
 
-DB_URL = "postgresql://geoagent:geoagent@localhost:5432/geoagent"
+DB_PATH = "backend/db/geoagent.db"
 
 def load_pois(geojson_path: str):
-    """Load POIs from a GeoJSON file into PostGIS."""
-    gdf = gpd.read_file(geojson_path)
+    """Load POIs from a GeoJSON file into SQLite."""
+    with open(geojson_path, "r") as f:
+        data = json.load(f)
 
-    # Map Overture categories to our simplified categories
-    category_mapping = {
-        "coffee_shop": "coffee_shop",
-        "cafe": "coffee_shop",
-        "restaurant": "restaurant",
-        "fast_food_restaurant": "restaurant",
-        "shopping_mall": "retail",
-        "supermarket": "grocery",
-        "bank": "services",
-        "gym": "fitness",
-    }
+    conn = sqlite3.connect(DB_PATH)
 
-    gdf["lat"] = gdf.geometry.y
-    gdf["lng"] = gdf.geometry.x
+    count = 0
+    for feature in data["features"]:
+        props = feature["properties"]
+        coords = feature["geometry"]["coordinates"]
+        lng, lat = coords[0], coords[1]
 
-    # Select and rename columns (adjust based on actual Overture schema)
-    result = gdf[["names", "categories", "lat", "lng", "geometry"]].copy()
-    result = result.rename(columns={"names": "name", "categories": "category"})
+        name = props.get("names", {}).get("primary", "Unknown") if isinstance(props.get("names"), dict) else str(props.get("names", "Unknown"))
+        category = props.get("categories", {}).get("primary", "other") if isinstance(props.get("categories"), dict) else str(props.get("categories", "other"))
 
-    engine = create_engine(DB_URL)
-    result.to_postgis("pois", engine, if_exists="append", index=False)
-    print(f"Loaded {len(result)} POIs")
+        conn.execute(
+            "INSERT INTO pois (name, category, lat, lng) VALUES (?, ?, ?, ?)",
+            (name, category, lat, lng)
+        )
+        count += 1
+
+    conn.commit()
+    conn.close()
+    print(f"Loaded {count} POIs")
 
 if __name__ == "__main__":
     import sys
@@ -765,105 +811,81 @@ if __name__ == "__main__":
 3. Run: `python db/load_pois.py db/data/places.geojson`
 4. Verify: `SELECT COUNT(*) FROM pois;`
 5. Verify categories: `SELECT category, COUNT(*) FROM pois GROUP BY category ORDER BY COUNT(*) DESC LIMIT 10;`
-6. Verify spatial: `SELECT name, category FROM pois WHERE ST_DWithin(geom, ST_SetSRID(ST_MakePoint(-80.49, 43.45), 4326), 0.01) LIMIT 10;`
 
 **Test:** Database has real POI data. You can find coffee shops near downtown Kitchener.
 
 ---
 
-### Step 3.5: Write real spatial query functions
+### Step 3.6: Write real query functions
 
-**What to do:** Replace mock tool functions with real PostGIS queries.
+**What to do:** Replace mock tool functions with real SQLite queries + Haversine distance.
 
 **File:** `backend/tools.py` (rewrite)
 
 ```python
-import psycopg2
-import json
+import sqlite3
+from db.geo_utils import haversine
 
-DB_CONFIG = {
-    "dbname": "geoagent",
-    "user": "geoagent",
-    "password": "geoagent",
-    "host": "localhost",
-    "port": 5432
-}
+DB_PATH = "db/geoagent.db"
 
 def get_db_connection():
-    return psycopg2.connect(**DB_CONFIG)
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
 
 def get_population(lat: float, lng: float, radius_km: float) -> dict:
-    """Get population within radius using PostGIS ST_DWithin."""
+    """Get population within radius using Haversine distance."""
     conn = get_db_connection()
-    cur = conn.cursor()
-
-    # ST_DWithin with geography type uses meters
-    cur.execute("""
-        SELECT
-            COALESCE(SUM(population), 0) as total_pop,
-            COALESCE(AVG(median_income), 0) as avg_income,
-            COALESCE(AVG(avg_age), 0) as avg_age,
-            COUNT(*) as num_areas
-        FROM demographics
-        WHERE ST_DWithin(
-            geom::geography,
-            ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography,
-            %s
-        )
-    """, (lng, lat, radius_km * 1000))
-
-    row = cur.fetchone()
+    rows = conn.execute(
+        "SELECT population, median_income, avg_age FROM demographics WHERE population > 0"
+    ).fetchall()
     conn.close()
 
-    total_pop = int(row[0])
-    # Score: 0-100 based on population density
+    # Filter by distance in Python
+    nearby = [r for r in rows if haversine(lat, lng, r["lat"], r["lng"]) <= radius_km]
+
+    total_pop = sum(r["population"] or 0 for r in nearby)
+    incomes = [r["median_income"] for r in nearby if r["median_income"]]
+    ages = [r["avg_age"] for r in nearby if r["avg_age"]]
+
     score = min(100, int(total_pop / 200))
 
     return {
         "population": total_pop,
-        "avg_median_income": round(float(row[1]), 0),
-        "avg_age": round(float(row[2]), 1),
-        "areas_covered": row[3],
+        "avg_median_income": round(sum(incomes) / len(incomes), 0) if incomes else 0,
+        "avg_age": round(sum(ages) / len(ages), 1) if ages else 0,
+        "areas_covered": len(nearby),
         "radius_km": radius_km,
         "score": score,
         "source": "statscan_census_2021"
     }
 
 def find_competitors(lat: float, lng: float, business_type: str, radius_km: float) -> dict:
-    """Find competing businesses using PostGIS spatial query."""
+    """Find competing businesses using Haversine distance."""
     conn = get_db_connection()
-    cur = conn.cursor()
-
-    cur.execute("""
-        SELECT
-            name, category,
-            ST_Distance(
-                geom::geography,
-                ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography
-            ) as distance_m
-        FROM pois
-        WHERE category = %s
-        AND ST_DWithin(
-            geom::geography,
-            ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography,
-            %s
-        )
-        ORDER BY distance_m
-        LIMIT 20
-    """, (lng, lat, business_type, lng, lat, radius_km * 1000))
-
-    competitors = [
-        {"name": row[0], "category": row[1], "distance_m": round(row[2], 0)}
-        for row in cur.fetchall()
-    ]
+    rows = conn.execute(
+        "SELECT name, category, lat, lng FROM pois WHERE category = ?",
+        (business_type,)
+    ).fetchall()
     conn.close()
 
+    # Calculate distance for each and filter
+    competitors = []
+    for r in rows:
+        dist = haversine(lat, lng, r["lat"], r["lng"])
+        if dist <= radius_km:
+            competitors.append({
+                "name": r["name"],
+                "category": r["category"],
+                "distance_m": round(dist * 1000, 0)
+            })
+
+    competitors.sort(key=lambda c: c["distance_m"])
     count = len(competitors)
-    # Score: fewer competitors = higher score
     score = max(0, 100 - (count * 15))
 
     return {
-        "competitors": competitors[:5],  # top 5 nearest
+        "competitors": competitors[:5],
         "total_count": count,
         "nearest_distance_m": competitors[0]["distance_m"] if competitors else None,
         "score": score,
@@ -873,56 +895,51 @@ def find_competitors(lat: float, lng: float, business_type: str, radius_km: floa
 def get_median_income(lat: float, lng: float) -> dict:
     """Get median income from the nearest census dissemination area."""
     conn = get_db_connection()
-    cur = conn.cursor()
-
-    cur.execute("""
-        SELECT median_income, population, avg_age, da_id
-        FROM demographics
-        WHERE ST_Contains(geom, ST_SetSRID(ST_MakePoint(%s, %s), 4326))
-        LIMIT 1
-    """, (lng, lat))
-
-    row = cur.fetchone()
+    rows = conn.execute(
+        "SELECT median_income, population, avg_age, da_id, lat, lng FROM demographics WHERE median_income > 0"
+    ).fetchall()
     conn.close()
 
-    if row is None:
+    if not rows:
         return {"error": "No census data found for this location"}
 
-    income = int(row[0]) if row[0] else 0
+    # Find the nearest dissemination area
+    nearest = min(rows, key=lambda r: haversine(lat, lng, r["lat"], r["lng"]))
+
+    income = nearest["median_income"]
     score = min(100, int(income / 800))
 
     return {
         "median_income": income,
-        "population": row[1],
-        "avg_age": float(row[2]) if row[2] else 0,
-        "da_id": row[3],
+        "population": nearest["population"],
+        "avg_age": float(nearest["avg_age"]) if nearest["avg_age"] else 0,
+        "da_id": nearest["da_id"],
         "score": score,
         "source": "statscan_census_2021"
     }
 ```
 
 **Substeps:**
-1. `pip install psycopg2-binary` (add to requirements.txt)
-2. Rewrite `tools.py` with real database queries
-3. Test each function standalone:
+1. Rewrite `tools.py` with SQLite queries + Haversine
+2. Test each function standalone:
    ```python
    python -c "from tools import get_population; print(get_population(43.45, -80.49, 2.0))"
    ```
-4. Test `find_competitors`: should return real business names
-5. Test `get_median_income`: should return real income data
-6. Run `agent.py` again with the same questions from Phase 2
-7. Answers should now include real data instead of mock data
+3. Test `find_competitors`: should return real business names
+4. Test `get_median_income`: should return real income data
+5. Run `agent.py` again with the same questions from Phase 2
+6. Answers should now include real data instead of mock data
 
-**Test:** Same questions, but real data from PostGIS. Business names are real. Population numbers match census data.
+**Test:** Same questions, but real data from SQLite. Business names are real. Population numbers match census data.
 
 ---
 
-### Step 3.6: Add two more spatial tools
+### Step 3.7: Add two more tools
 
-**What to do:** Add zoning check and nearest transit tools.
+**What to do:** Add zoning check and road info tools.
 
 **Add to `tools.py`:**
-- `check_zoning(lat, lng)` → queries zoning table, returns if commercial use is allowed
+- `check_zoning(lat, lng)` → finds nearest zoning area, returns if commercial use is allowed
 - `get_road_info(lat, lng)` → finds nearest road, returns road class and speed limit
 
 **Add to `agent.py`:**
@@ -930,25 +947,26 @@ def get_median_income(lat: float, lng: float) -> dict:
 - Add to TOOL_FUNCTIONS
 
 **Substeps:**
-1. Write `check_zoning()` — uses `ST_Contains` on zoning table
-2. Write `get_road_info()` — uses `ST_DWithin` + `ORDER BY ST_Distance` on roads table
+1. Write `check_zoning()` — finds nearest zone using Haversine
+2. Write `get_road_info()` — finds nearest road using Haversine
 3. Load road data from OSM (download from Geofabrik: https://download.geofabrik.de/north-america/canada/ontario.html)
 4. Load zoning data from City of Kitchener open data portal
 5. Add tool definitions in agent.py
 6. Test: "Is downtown Kitchener zoned for commercial use?"
 7. Test: "What's the road access like near King Street?"
 
-**Test:** 5 working tools, all querying real PostGIS data.
+**Test:** 5 working tools, all querying real SQLite data.
 
 ---
 
 ### Phase 3 Checkpoint
 
 You should now have:
-- [x] PostGIS running in Docker with real data
+- [x] SQLite database with real data (zero setup, just a file)
+- [x] Haversine distance function for spatial queries
 - [x] Census demographics for KW area
 - [x] POI data from Overture Maps
-- [x] 5 tools querying real spatial data
+- [x] 5 tools querying real data
 - [x] Same agent interface as Phase 2 but with real data
 
 **Demo:** "Should I open a coffee shop on King Street in downtown Kitchener?" → answer includes real population, real competitor names, real income data, real zoning info.
@@ -960,12 +978,14 @@ GeoAgent/
 │   ├── .env
 │   ├── requirements.txt
 │   ├── main.py
-│   ├── tools.py          ← now queries PostGIS
+│   ├── tools.py          ← now queries SQLite
 │   ├── agent.py           ← tool-use loop (unchanged)
 │   └── db/
 │       ├── schema.sql
+│       ├── geo_utils.py   ← Haversine distance function
 │       ├── load_census.py
 │       ├── load_pois.py
+│       ├── geoagent.db    ← the database (gitignored)
 │       └── data/          ← .gitignore'd raw data files
 └── PRD.md
 ```
@@ -1241,6 +1261,8 @@ GeoAgent/
 │   ├── agent.py
 │   └── db/
 │       ├── schema.sql
+│       ├── geo_utils.py
+│       ├── geoagent.db
 │       ├── load_census.py
 │       └── load_pois.py
 └── PRD.md
@@ -1846,7 +1868,7 @@ def run_demographics_agent(state: GeoAgentState) -> dict:
    })
    print(result["demographics_report"])
    ```
-3. Verify it calls the PostGIS tools and returns a structured report with score
+3. Verify it calls the database tools and returns a structured report with score
 
 **Test:** Returns a dict with score, summary, positive/negative factors, and raw data.
 
@@ -2107,6 +2129,8 @@ GeoAgent/
 │   ├── tools.py
 │   └── db/
 │       ├── schema.sql
+│       ├── geo_utils.py
+│       ├── geoagent.db
 │       ├── load_census.py
 │       └── load_pois.py
 ├── frontend/
@@ -2185,49 +2209,19 @@ GeoAgent/
 
 ---
 
-### Step 7.5: Docker Compose for full stack
+### Step 7.5: Deployment setup
 
-**File:** `docker-compose.yml` (project root)
-
-```yaml
-version: "3.8"
-services:
-  db:
-    image: postgis/postgis:16-3.4
-    environment:
-      POSTGRES_USER: geoagent
-      POSTGRES_PASSWORD: geoagent
-      POSTGRES_DB: geoagent
-    ports:
-      - "5432:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-
-  backend:
-    build: ./backend
-    ports:
-      - "8000:8000"
-    depends_on:
-      - db
-    env_file:
-      - ./backend/.env
-
-  frontend:
-    build: ./frontend
-    ports:
-      - "3000:3000"
-    depends_on:
-      - backend
-
-volumes:
-  pgdata:
-```
+**What to do:** Since SQLite is just a file, deployment is simple. No database server to manage.
 
 **Substeps:**
-1. Create Dockerfiles for backend and frontend
-2. Create docker-compose.yml
-3. `docker-compose up` starts everything
-4. Test the full stack running in Docker
+1. Backend: Deploy to Railway (free tier) or Render
+   - Set environment variables (ANTHROPIC_API_KEY)
+   - Include the `geoagent.db` file in the deployment
+   - `python manage.py runserver 0.0.0.0:8000`
+2. Frontend: Deploy to Vercel (free tier)
+   - `npm run build` produces static files
+   - Point API calls to your backend URL
+3. Test the full stack running in production
 
 ---
 
@@ -2238,7 +2232,7 @@ You should now have:
 - [x] Drill-down follow-ups
 - [x] Analysis history
 - [x] Polished UI with animations and custom markers
-- [x] Docker Compose for easy deployment
+- [x] Simple deployment (no Docker needed)
 - [x] A complete, demo-ready product
 
 ---
@@ -2249,7 +2243,7 @@ You should now have:
 |-------|-----------|-----------|
 | 1 | Chat with Claude in terminal | Yes (terminal) |
 | 2 | Agent calls tools, gives scored recommendations | Yes (terminal) |
-| 3 | Real PostGIS data, real business names, real demographics | Yes (terminal) |
+| 3 | Real SQLite data, real business names, real demographics | Yes (terminal) |
 | 4 | Django API serving agent responses with streaming | Yes (curl/Postman) |
 | 5 | React chat + Leaflet map with live agent | Yes (browser!) |
 | 6 | Multi-agent orchestration with LangGraph | Yes (browser, faster + smarter) |
@@ -2261,7 +2255,7 @@ You should now have:
 
 **Every phase produces something you can run and show someone.**
 
-You are never more than a few days away from a working demo. If you get stuck on Phase 6, you still have a working Phase 5 app. If PostGIS is giving you trouble in Phase 3, you still have mock data from Phase 2.
+You are never more than a few days away from a working demo. If you get stuck on Phase 6, you still have a working Phase 5 app. If data loading is giving you trouble in Phase 3, you still have mock data from Phase 2.
 
 Build small. Test constantly. Expand when it works.
 
@@ -2277,6 +2271,6 @@ Build small. Test constantly. Expand when it works.
 | OpenStreetMap | Map tiles + road data | openstreetmap.org |
 | Geofabrik | OSM data downloads | download.geofabrik.de |
 | City of Kitchener Open Data | Zoning data | open-kitchener.opendata.arcgis.com |
-| Docker | PostGIS database | docker.com |
+| SQLite | Database (built into Python) | sqlite.org |
 | Vercel | Frontend hosting (free tier) | vercel.com |
 | Railway | Backend hosting (free tier) | railway.app |

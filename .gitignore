@@ -10,6 +10,12 @@ __pycache__/
 *$py.class
 *.pyo
 
+# Database files
+*.db
+
+# Raw data files
+backend/db/data/
+
 # Distribution / packaging
 *.egg-info/
 dist/
