@@ -10,7 +10,8 @@
       "Bash(./venv/Scripts/python tools.py)",
       "Bash(ls:*)",
       "Bash(py tools.py)",
-      "Bash(./venv/Scripts/python.exe tools.py)"
+      "Bash(./venv/Scripts/python.exe tools.py)",
+      "Bash(backend/venv/Scripts/python.exe -c ':*)"
     ]
   }
 }
