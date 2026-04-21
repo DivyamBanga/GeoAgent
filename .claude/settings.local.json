@@ -11,7 +11,20 @@
       "Bash(ls:*)",
       "Bash(py tools.py)",
       "Bash(./venv/Scripts/python.exe tools.py)",
-      "Bash(backend/venv/Scripts/python.exe -c ':*)"
+      "Bash(backend/venv/Scripts/python.exe -c ':*)",
+      "Bash(backend/venv/Scripts/pip.exe install:*)",
+      "Bash(curl -L -o lda_000a21a_e.zip \"https://www12.statcan.gc.ca/census-recensement/2021/geo/sip-pis/boundary-limites/files-fichiers/lda_000a21a_e.zip\")",
+      "Bash(unzip -o lda_000a21a_e.zip -d lda_000a21a_e)",
+      "WebSearch",
+      "WebFetch(domain:www150.statcan.gc.ca)",
+      "WebFetch(domain:www12.statcan.gc.ca)",
+      "Bash(curl -L -o census_profile_ontario.zip \"https://www12.statcan.gc.ca/census-recensement/2021/dp-pd/prof/details/download-telecharger/comp/GetFile.cfm?Lang=E&FILETYPE=CSV&GEONO=006CI_Ontario\")",
+      "Bash(unzip -l census_profile_ontario.zip)",
+      "Bash(unzip -o census_profile_ontario.zip \"98-401-X2021006CI_Geo_starting_row_Ontario.CSV\" \"98-401-X2021006CI_English_meta.txt\" \"README_meta.txt\")",
+      "Bash(../../../backend/venv/Scripts/python.exe -c ':*)",
+      "Bash(unzip -l census_profile_ontario_full.zip)",
+      "Bash(backend/venv/Scripts/python.exe backend/db/load_census.py boundaries backend/db/data/lda_000a21a_e/lda_000a21a_e.shp)",
+      "Bash(backend/venv/Scripts/python.exe backend/db/load_census.py profile backend/db/data/census_profile_ontario_full.zip)"
     ]
   }
 }
