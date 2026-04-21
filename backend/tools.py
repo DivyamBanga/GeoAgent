@@ -1,102 +1,108 @@
-# Hardcoded data for now. We'll replace with SQLite in Phase 3.
-MOCK_DATA = {
-    "kitchener_downtown": {"population": 12500, "area": "Downtown Kitchener"},
-    "kitchener_dtr": {"population": 8200, "area": "DTK - Innovation District"},
-    "waterloo_uptown": {"population": 15000, "area": "Uptown Waterloo"},
-}
+import sqlite3
+import os
+from db.geo_utils import haversine
+
+DB_PATH = os.path.join(os.path.dirname(__file__), "db", "geoagent.db")
+
+
+def get_db_connection():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
 
 def get_population(lat: float, lng: float, radius_km: float) -> dict:
-    """Get population within a radius of a point. Returns mock data for now."""
-    # Simple mock: pick closest area based on lat
-    if lat > 43.47:
-        data = MOCK_DATA["waterloo_uptown"]
-    elif lat >= 43.45:
-        data = MOCK_DATA["kitchener_downtown"]
-    else:
-        data = MOCK_DATA["kitchener_dtr"]
+    """Get population within radius using Haversine distance."""
+    conn = get_db_connection()
+    rows = conn.execute(
+        "SELECT population, median_income, avg_age, lat, lng FROM demographics WHERE population > 0"
+    ).fetchall()
+    conn.close()
 
-    population = data["population"]
+    # Filter by distance in Python
+    nearby = [r for r in rows if haversine(lat, lng, r["lat"], r["lng"]) <= radius_km]
 
-    # Score: 0-100 based on population size
-    # <5k = low, 5-10k = moderate, >10k = high
-    if population >= 10000:
-        score = min(100, 60 + (population - 10000) // 250)
-    elif population >= 5000:
-        score = 30 + (population - 5000) // 167
-    else:
-        score = max(0, population // 167)
+    total_pop = sum(r["population"] or 0 for r in nearby)
+    incomes = [r["median_income"] for r in nearby if r["median_income"]]
+    ages = [r["avg_age"] for r in nearby if r["avg_age"]]
+
+    score = min(100, int(total_pop / 200))
 
     return {
-        "population": population,
-        "area_name": data["area"],
+        "population": total_pop,
+        "avg_median_income": round(sum(incomes) / len(incomes), 0) if incomes else 0,
+        "avg_age": round(sum(ages) / len(ages), 1) if ages else 0,
+        "areas_covered": len(nearby),
         "radius_km": radius_km,
         "score": score,
-        "source": "mock_data"
+        "source": "statscan_census_2021"
     }
 
-MOCK_COMPETITORS = [
-    {"name": "Starbucks", "lat": 43.451, "lng": -80.492, "distance_m": 200},
-    {"name": "Williams Fresh Cafe", "lat": 43.449, "lng": -80.488, "distance_m": 450},
-    {"name": "Balzac's Coffee", "lat": 43.453, "lng": -80.495, "distance_m": 600},
-]
-
-MOCK_INCOME = {
-    "kitchener_downtown": {"median_income": 52000, "avg_household_spend": 4200},
-    "waterloo_uptown": {"median_income": 68000, "avg_household_spend": 5100},
-}
 
 def find_competitors(lat: float, lng: float, business_type: str, radius_km: float) -> dict:
-    """Find competing businesses near a location."""
-    # Filter mock competitors within radius (simplified)
-    nearby = [c for c in MOCK_COMPETITORS if c["distance_m"] < radius_km * 1000]
-    count = len(nearby)
+    """Find competing businesses using Haversine distance."""
+    conn = get_db_connection()
+    rows = conn.execute(
+        "SELECT name, category, lat, lng FROM pois WHERE category = ?",
+        (business_type,)
+    ).fetchall()
+    conn.close()
 
-    # Score: fewer competitors = higher score (less saturation)
-    # 0 competitors = 95, 1 = 80, 2 = 60, 3 = 40, 4+ = 20
-    if count == 0:
-        score = 95
-    elif count == 1:
-        score = 80
-    elif count == 2:
-        score = 60
-    elif count == 3:
-        score = 40
-    else:
-        score = max(10, 100 - count * 20)
+    # Calculate distance for each and filter
+    competitors = []
+    for r in rows:
+        dist = haversine(lat, lng, r["lat"], r["lng"])
+        if dist <= radius_km:
+            competitors.append({
+                "name": r["name"],
+                "category": r["category"],
+                "distance_m": round(dist * 1000, 0)
+            })
+
+    competitors.sort(key=lambda c: c["distance_m"])
+    count = len(competitors)
+    score = max(0, 100 - (count * 15))
 
     return {
-        "competitors": nearby,
+        "competitors": competitors[:5],
         "total_count": count,
-        "nearest_distance_m": nearby[0]["distance_m"] if nearby else None,
+        "nearest_distance_m": competitors[0]["distance_m"] if competitors else None,
         "score": score,
-        "source": "mock_data"
+        "source": "overture_maps"
     }
 
+
 def get_median_income(lat: float, lng: float) -> dict:
-    """Get median household income near a location."""
-    if lat > 43.46:
-        data = MOCK_INCOME["waterloo_uptown"]
-    else:
-        data = MOCK_INCOME["kitchener_downtown"]
+    """Get median income from the nearest census dissemination area."""
+    conn = get_db_connection()
+    rows = conn.execute(
+        "SELECT median_income, population, avg_age, da_id, lat, lng FROM demographics WHERE median_income > 0"
+    ).fetchall()
+    conn.close()
 
-    income = data["median_income"]
+    if not rows:
+        return {"error": "No census data found for this location"}
 
-    # Score: 0-100 based on income level
-    # <40k = low, 40-60k = moderate, >60k = high
-    if income >= 60000:
-        score = min(100, 70 + (income - 60000) // 1000)
-    elif income >= 40000:
-        score = 30 + (income - 40000) // 500
-    else:
-        score = max(0, income // 1334)
+    # Find the nearest dissemination area
+    nearest = min(rows, key=lambda r: haversine(lat, lng, r["lat"], r["lng"]))
 
-    return {**data, "score": score, "source": "mock_data"}
+    income = nearest["median_income"]
+    score = min(100, int(income / 800))
+
+    return {
+        "median_income": income,
+        "population": nearest["population"],
+        "avg_age": float(nearest["avg_age"]) if nearest["avg_age"] else 0,
+        "da_id": nearest["da_id"],
+        "score": score,
+        "source": "statscan_census_2021"
+    }
 
 
 if __name__ == "__main__":
-    print("--- get_population ---")
+    print("--- get_population (downtown Kitchener, 2km) ---")
     print(get_population(43.45, -80.49, 2.0))
-    print("\n--- find_competitors ---")
+    print("\n--- find_competitors (coffee_shop, downtown Kitchener, 1km) ---")
     print(find_competitors(43.45, -80.49, "coffee_shop", 1.0))
-    print("\n--- get_median_income ---")
+    print("\n--- get_median_income (downtown Kitchener) ---")
     print(get_median_income(43.45, -80.49))

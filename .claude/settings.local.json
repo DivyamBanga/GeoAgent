@@ -27,7 +27,8 @@
       "Bash(backend/venv/Scripts/python.exe backend/db/load_census.py profile backend/db/data/census_profile_ontario_full.zip)",
       "Bash(backend/venv/Scripts/overturemaps.exe download:*)",
       "Bash(PYTHONIOENCODING=utf-8 backend/venv/Scripts/overturemaps.exe download --bbox=-80.6,43.35,-80.3,43.55 -t place -f geojsonseq -o backend/db/data/places.geojsonseq)",
-      "Bash(backend/venv/Scripts/python.exe backend/db/load_pois.py backend/db/data/places.parquet)"
+      "Bash(backend/venv/Scripts/python.exe backend/db/load_pois.py backend/db/data/places.parquet)",
+      "Bash(../backend/venv/Scripts/python.exe tools.py)"
     ]
   }
 }
