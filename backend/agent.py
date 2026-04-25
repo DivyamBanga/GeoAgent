@@ -1,9 +1,10 @@
 import json
+import os
 import anthropic
 from dotenv import load_dotenv
 from tools import get_population, find_competitors, get_median_income
 
-load_dotenv()
+load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
 client = anthropic.Anthropic()
 

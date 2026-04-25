@@ -30,7 +30,8 @@
       "Bash(backend/venv/Scripts/python.exe backend/db/load_pois.py backend/db/data/places.parquet)",
       "Bash(../backend/venv/Scripts/python.exe tools.py)",
       "Bash(python3 -c ':*)",
-      "Bash(C:/Users/divya/Desktop/Projects/GeoAgent/backend/venv/Scripts/python.exe -c ':*)"
+      "Bash(C:/Users/divya/Desktop/Projects/GeoAgent/backend/venv/Scripts/python.exe -c ':*)",
+      "Bash(curl:*)"
     ]
   }
 }
