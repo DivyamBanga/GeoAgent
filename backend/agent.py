@@ -85,23 +85,23 @@ TOOL_FUNCTIONS = {
     "get_median_income": get_median_income
 }
 
+system = """You are GeoAgent, a location intelligence analyst.
+When analyzing a location, use ALL relevant tools to gather data.
+Always provide specific numbers from the tools, not guesses.
+If the user mentions Kitchener downtown, use lat=43.45, lng=-80.49.
+If they mention Waterloo uptown, use lat=43.47, lng=-80.52.
+
+After gathering data, provide:
+1. An overall score (0-100) for the location based on the tool scores
+2. The top 3 positive factors
+3. The top 3 risks
+4. A clear recommendation (Go / Caution / Avoid)
+Format your response clearly with headers."""
+
 
 def run_agent(user_message: str) -> str:
     """Run one turn of the agent loop."""
     messages = [{"role": "user", "content": user_message}]
-
-    system = """You are GeoAgent, a location intelligence analyst.
-    When analyzing a location, use ALL relevant tools to gather data.
-    Always provide specific numbers from the tools, not guesses.
-    If the user mentions Kitchener downtown, use lat=43.45, lng=-80.49.
-    If they mention Waterloo uptown, use lat=43.47, lng=-80.52.
-
-    After gathering data, provide:
-    1. An overall score (0-100) for the location based on the tool scores
-    2. The top 3 positive factors
-    3. The top 3 risks
-    4. A clear recommendation (Go / Caution / Avoid)
-    Format your response clearly with headers."""
 
     # Step 1: Send message to Claude with tool definitions
     response = client.messages.create(
@@ -151,6 +151,63 @@ def run_agent(user_message: str) -> str:
     # Extract text response
     text_blocks = [b.text for b in response.content if hasattr(b, "text")]
     return "\n".join(text_blocks)
+
+
+def run_agent_streaming(user_message: str):
+    """Generator that yields events as the agent works."""
+    yield {"type": "status", "message": "Parsing your question..."}
+
+    messages = [{"role": "user", "content": user_message}]
+
+    response = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=1024,
+        system=system,
+        tools=tools,
+        messages=messages
+    )
+
+    while response.stop_reason == "tool_use":
+        tool_use_block = next(
+            b for b in response.content if b.type == "tool_use"
+        )
+
+        yield {
+            "type": "tool_call",
+            "tool": tool_use_block.name,
+            "input": tool_use_block.input
+        }
+
+        result = TOOL_FUNCTIONS[tool_use_block.name](**tool_use_block.input)
+
+        yield {
+            "type": "tool_result",
+            "tool": tool_use_block.name,
+            "result": result
+        }
+
+        messages.append({"role": "assistant", "content": response.content})
+        messages.append({
+            "role": "user",
+            "content": [{
+                "type": "tool_result",
+                "tool_use_id": tool_use_block.id,
+                "content": json.dumps(result)
+            }]
+        })
+
+        response = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=1024,
+            system=system,
+            tools=tools,
+            messages=messages
+        )
+
+    text_blocks = [b.text for b in response.content if hasattr(b, "text")]
+    final_answer = "\n".join(text_blocks)
+
+    yield {"type": "answer", "content": final_answer}
 
 
 if __name__ == "__main__":
