@@ -31,7 +31,10 @@
       "Bash(../backend/venv/Scripts/python.exe tools.py)",
       "Bash(python3 -c ':*)",
       "Bash(C:/Users/divya/Desktop/Projects/GeoAgent/backend/venv/Scripts/python.exe -c ':*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(python -c \"from agent import run_agent, run_agent_streaming; print\\('agent imports OK'\\)\")",
+      "Bash(python3 -c \"from agent import run_agent, run_agent_streaming; print\\('agent imports OK'\\)\")",
+      "Bash(py -c \"from agent import run_agent, run_agent_streaming; print\\('agent imports OK'\\)\")"
     ]
   }
 }
