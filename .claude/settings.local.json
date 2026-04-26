@@ -34,7 +34,11 @@
       "Bash(curl:*)",
       "Bash(python -c \"from agent import run_agent, run_agent_streaming; print\\('agent imports OK'\\)\")",
       "Bash(python3 -c \"from agent import run_agent, run_agent_streaming; print\\('agent imports OK'\\)\")",
-      "Bash(py -c \"from agent import run_agent, run_agent_streaming; print\\('agent imports OK'\\)\")"
+      "Bash(py -c \"from agent import run_agent, run_agent_streaming; print\\('agent imports OK'\\)\")",
+      "Bash(./venv/Scripts/python.exe -c \"from agent import run_agent, run_agent_streaming; print\\('agent imports OK'\\)\")",
+      "Bash(./venv/Scripts/python.exe manage.py check)",
+      "Bash(./venv/Scripts/python.exe manage.py show_urls)",
+      "Bash(./venv/Scripts/python.exe -c ':*)"
     ]
   }
 }
