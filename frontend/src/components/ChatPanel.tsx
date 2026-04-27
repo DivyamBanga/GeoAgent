@@ -1,9 +1,11 @@
 import { useState, useRef, useEffect } from "react"
 import type { MapMarker } from "./MapPanel"
+import ScoreCard, { type Scores } from "./ScoreCard"
 
 interface Message {
   role: "user" | "assistant" | "status"
   content: string
+  scores?: Scores
 }
 
 interface ChatPanelProps {
@@ -32,6 +34,9 @@ export default function ChatPanel({ onMapUpdate, onCenterChange: _onCenterChange
     setMessages(prev => [...prev, { role: "user", content: question }])
     setLoading(true)
 
+    // Collect scores from tool_result events during this request
+    const collectedScores: Scores = {}
+
     try {
       const response = await fetch("http://localhost:8000/api/analyze/stream/", {
         method: "POST",
@@ -49,7 +54,6 @@ export default function ChatPanel({ onMapUpdate, onCenterChange: _onCenterChange
 
         buffer += decoder.decode(value, { stream: true })
         const lines = buffer.split("\n")
-        // Keep the last potentially incomplete line in the buffer
         buffer = lines.pop() || ""
 
         for (const line of lines) {
@@ -65,6 +69,11 @@ export default function ChatPanel({ onMapUpdate, onCenterChange: _onCenterChange
               content: `Calling ${data.tool}...`
             }])
           } else if (data.type === "tool_result") {
+            // Collect score from this tool
+            if (data.result && typeof data.result.score === "number") {
+              collectedScores[data.tool] = data.result.score
+            }
+            // Update map with competitor data
             if (data.tool === "find_competitors" && data.result.competitors) {
               const competitorMarkers: MapMarker[] = data.result.competitors.map(
                 (c: { name: string; lat?: number; lng?: number }) => ({
@@ -77,7 +86,19 @@ export default function ChatPanel({ onMapUpdate, onCenterChange: _onCenterChange
               onMapUpdate(competitorMarkers)
             }
           } else if (data.type === "answer") {
-            setMessages(prev => [...prev, { role: "assistant", content: data.content }])
+            // Compute overall score from collected sub-scores
+            const scoreValues = Object.values(collectedScores)
+            if (scoreValues.length > 0) {
+              collectedScores.overall = Math.round(
+                scoreValues.reduce((sum, s) => sum + s, 0) / scoreValues.length
+              )
+            }
+
+            setMessages(prev => [...prev, {
+              role: "assistant",
+              content: data.content,
+              scores: scoreValues.length > 0 ? { ...collectedScores } : undefined,
+            }])
           }
         }
       }
@@ -95,18 +116,25 @@ export default function ChatPanel({ onMapUpdate, onCenterChange: _onCenterChange
       </div>
       <div style={{ flex: 1, overflowY: "auto", padding: "16px" }}>
         {messages.map((msg, i) => (
-          <div key={i} style={{
-            marginBottom: "12px",
-            padding: "8px 12px",
-            borderRadius: "8px",
-            backgroundColor: msg.role === "user" ? "#e3f2fd"
-              : msg.role === "status" ? "#fff3e0"
-              : "#f5f5f5",
-            fontSize: msg.role === "status" ? "0.85em" : "1em",
-            color: msg.role === "status" ? "#e65100" : "#212121",
-            whiteSpace: "pre-wrap",
-          }}>
-            {msg.content}
+          <div key={i}>
+            <div style={{
+              marginBottom: msg.scores ? "4px" : "12px",
+              padding: "8px 12px",
+              borderRadius: "8px",
+              backgroundColor: msg.role === "user" ? "#e3f2fd"
+                : msg.role === "status" ? "#fff3e0"
+                : "#f5f5f5",
+              fontSize: msg.role === "status" ? "0.85em" : "1em",
+              color: msg.role === "status" ? "#e65100" : "#212121",
+              whiteSpace: "pre-wrap",
+            }}>
+              {msg.content}
+            </div>
+            {msg.scores && (
+              <div style={{ marginBottom: "12px" }}>
+                <ScoreCard scores={msg.scores} />
+              </div>
+            )}
           </div>
         ))}
         <div ref={messagesEndRef} />
