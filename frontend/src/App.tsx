@@ -4,7 +4,10 @@ import MapPanel from "./components/MapPanel"
 import "./App.css"
 
 function App() {
-  const [markers, setMarkers] = useState<any[]>([])
+  // Test marker — remove after verifying map works
+  const [markers, setMarkers] = useState<any[]>([
+    { lat: 43.45, lng: -80.49, label: "Downtown Kitchener", type: "target" }
+  ])
   const [center, setCenter] = useState<[number, number]>([43.45, -80.49]) // Kitchener
 
   return (

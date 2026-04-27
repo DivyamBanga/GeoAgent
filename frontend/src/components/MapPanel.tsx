@@ -1,4 +1,19 @@
-interface MapMarker {
+import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet"
+import L from "leaflet"
+import "leaflet/dist/leaflet.css"
+
+// Fix Leaflet's default marker icon paths (broken by bundlers)
+import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png"
+import markerIcon from "leaflet/dist/images/marker-icon.png"
+import markerShadow from "leaflet/dist/images/marker-shadow.png"
+
+L.Icon.Default.mergeOptions({
+  iconUrl: markerIcon,
+  iconRetinaUrl: markerIcon2x,
+  shadowUrl: markerShadow,
+})
+
+export interface MapMarker {
   lat: number
   lng: number
   label: string
@@ -10,10 +25,18 @@ interface MapPanelProps {
   center: [number, number]
 }
 
-export default function MapPanel(_props: MapPanelProps) {
+export default function MapPanel({ markers, center }: MapPanelProps) {
   return (
-    <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", background: "#f0f0f0", color: "#999" }}>
-      Map panel — coming in Step 5.3
-    </div>
+    <MapContainer center={center} zoom={14} style={{ height: "100%", width: "100%" }}>
+      <TileLayer
+        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+      />
+      {markers.map((m, i) => (
+        <Marker key={i} position={[m.lat, m.lng]}>
+          <Popup>{m.label} ({m.type})</Popup>
+        </Marker>
+      ))}
+    </MapContainer>
   )
 }
