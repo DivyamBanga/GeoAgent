@@ -28,6 +28,17 @@ def get_population(lat: float, lng: float, radius_km: float) -> dict:
 
     score = min(100, int(total_pop / 200))
 
+    # Per-DA centroid data for map visualization
+    nearby_areas = [
+        {
+            "lat": r["lat"],
+            "lng": r["lng"],
+            "population": r["population"] or 0,
+            "median_income": r["median_income"] or 0,
+        }
+        for r in nearby
+    ]
+
     return {
         "population": total_pop,
         "avg_median_income": round(sum(incomes) / len(incomes), 0) if incomes else 0,
@@ -35,7 +46,8 @@ def get_population(lat: float, lng: float, radius_km: float) -> dict:
         "areas_covered": len(nearby),
         "radius_km": radius_km,
         "score": score,
-        "source": "statscan_census_2021"
+        "source": "statscan_census_2021",
+        "nearby_areas": nearby_areas,
     }
 
 
