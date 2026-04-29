@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react"
-import type { MapMarker } from "./MapPanel"
+import type { MapMarker, TradeArea, TradeCircle } from "./MapPanel"
 import ScoreCard, { type Scores } from "./ScoreCard"
 
 interface Message {
@@ -11,9 +11,11 @@ interface Message {
 interface ChatPanelProps {
   onMapUpdate: (markers: MapMarker[]) => void
   onCenterChange: (center: [number, number]) => void
+  onCircleUpdate: (circle: TradeCircle | null) => void
+  onTradeAreasUpdate: (areas: TradeArea[]) => void
 }
 
-export default function ChatPanel({ onMapUpdate, onCenterChange: _onCenterChange }: ChatPanelProps) {
+export default function ChatPanel({ onMapUpdate, onCenterChange, onCircleUpdate, onTradeAreasUpdate }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
   const [loading, setLoading] = useState(false)
@@ -34,7 +36,11 @@ export default function ChatPanel({ onMapUpdate, onCenterChange: _onCenterChange
     setMessages(prev => [...prev, { role: "user", content: question }])
     setLoading(true)
 
-    // Collect scores from tool_result events during this request
+    // Reset map overlays for new query
+    onCircleUpdate(null)
+    onTradeAreasUpdate([])
+    onMapUpdate([])
+
     const collectedScores: Scores = {}
 
     try {
@@ -68,12 +74,27 @@ export default function ChatPanel({ onMapUpdate, onCenterChange: _onCenterChange
               role: "status",
               content: `Calling ${data.tool}...`
             }])
+
+            // When get_population is called, show the trade area circle
+            if (data.tool === "get_population" && data.input) {
+              const { lat, lng, radius_km } = data.input
+              if (lat && lng && radius_km) {
+                onCircleUpdate({ lat, lng, radiusKm: radius_km })
+                onCenterChange([lat, lng])
+              }
+            }
           } else if (data.type === "tool_result") {
-            // Collect score from this tool
+            // Collect score
             if (data.result && typeof data.result.score === "number") {
               collectedScores[data.tool] = data.result.score
             }
-            // Update map with competitor data
+
+            // Census area visualization from get_population
+            if (data.tool === "get_population" && data.result.nearby_areas) {
+              onTradeAreasUpdate(data.result.nearby_areas)
+            }
+
+            // Competitor markers
             if (data.tool === "find_competitors" && data.result.competitors) {
               const competitorMarkers: MapMarker[] = data.result.competitors.map(
                 (c: { name: string; lat?: number; lng?: number }) => ({
@@ -86,7 +107,6 @@ export default function ChatPanel({ onMapUpdate, onCenterChange: _onCenterChange
               onMapUpdate(competitorMarkers)
             }
           } else if (data.type === "answer") {
-            // Compute overall score from collected sub-scores
             const scoreValues = Object.values(collectedScores)
             if (scoreValues.length > 0) {
               collectedScores.overall = Math.round(
