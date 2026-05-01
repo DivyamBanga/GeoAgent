@@ -45,7 +45,10 @@
       "Bash(npm create:*)",
       "Bash(npm install:*)",
       "Bash(npx tsc:*)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(python -m agents.intent_parser)",
+      "Bash(python3 -m agents.intent_parser)",
+      "Bash(py -m agents.intent_parser)"
     ]
   }
 }
