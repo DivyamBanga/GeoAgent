@@ -48,7 +48,16 @@
       "Bash(npm run:*)",
       "Bash(python -m agents.intent_parser)",
       "Bash(python3 -m agents.intent_parser)",
-      "Bash(py -m agents.intent_parser)"
+      "Bash(py -m agents.intent_parser)",
+      "Read(//c/Users/divya/AppData/Local/Programs/Python/**)",
+      "Bash(ls /c/Python*/python.exe)",
+      "Bash(where.exe python:*)",
+      "Bash(/c/Users/divya/AppData/Local/Programs/Python/Python313/python.exe -m agents.intent_parser)",
+      "Bash(python -c \"import sys; sys.path.insert\\(0, '.'\\); from agents.intent_parser import parse_intent; print\\('import works'\\)\")",
+      "Bash(python3 -c \"import sys; sys.path.insert\\(0, '.'\\); from agents.intent_parser import parse_intent; print\\('import works'\\)\")",
+      "Bash(where python3:*)",
+      "Bash(py --version)",
+      "Bash(./venv/Scripts/python.exe -c \"import sys; sys.path.insert\\(0, '.'\\); from agents.state import GeoAgentState; from tools import get_population; print\\('imports work'\\)\")"
     ]
   }
 }
