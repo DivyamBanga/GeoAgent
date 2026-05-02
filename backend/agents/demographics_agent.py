@@ -89,7 +89,7 @@ def run_demographics_agent(state: GeoAgentState) -> dict:
     }]
 
     response = client.messages.create(
-        model="claude-sonnet-4-20250514",
+        model="claude-haiku-4-5-20251001",
         max_tokens=1024,
         system=SYSTEM_PROMPT,
         tools=TOOLS,
@@ -116,7 +116,7 @@ def run_demographics_agent(state: GeoAgentState) -> dict:
         messages.append({"role": "user", "content": tool_results})
 
         response = client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model="claude-haiku-4-5-20251001",
             max_tokens=1024,
             system=SYSTEM_PROMPT,
             tools=TOOLS,
@@ -124,7 +124,8 @@ def run_demographics_agent(state: GeoAgentState) -> dict:
         )
 
     # Extract the final text response and parse as JSON
-    text = next(b.text for b in response.content if hasattr(b, "text"))
+    text_blocks = [b.text for b in response.content if hasattr(b, "text")]
+    text = text_blocks[0] if text_blocks else ""
 
     # Handle markdown fences if present
     clean = text.strip()
@@ -133,7 +134,24 @@ def run_demographics_agent(state: GeoAgentState) -> dict:
         clean = clean.rsplit("```", 1)[0]
         clean = clean.strip()
 
-    report = json.loads(clean)
+    # Try to extract JSON object if there's surrounding text
+    if clean and not clean.startswith("{"):
+        start = clean.find("{")
+        end = clean.rfind("}") + 1
+        if start != -1 and end > start:
+            clean = clean[start:end]
+
+    try:
+        report = json.loads(clean)
+    except (json.JSONDecodeError, ValueError):
+        # Fallback: if parsing fails, construct a report from the raw tool data
+        report = {
+            "score": 50,
+            "summary": text[:200] if text else "Demographics analysis completed but response parsing failed.",
+            "details": {},
+            "factors_positive": [],
+            "factors_negative": ["Unable to parse structured response"]
+        }
 
     return {"demographics_report": report}
 
