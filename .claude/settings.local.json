@@ -59,7 +59,9 @@
       "Bash(py --version)",
       "Bash(./venv/Scripts/python.exe -c \"import sys; sys.path.insert\\(0, '.'\\); from agents.state import GeoAgentState; from tools import get_population; print\\('imports work'\\)\")",
       "Bash(../venv/Scripts/python.exe load_roads.py)",
-      "Bash(../venv/Scripts/python.exe load_zoning.py)"
+      "Bash(../venv/Scripts/python.exe load_zoning.py)",
+      "Bash(./venv/Scripts/python.exe -c \"import langgraph; print\\(langgraph.__version__\\)\")",
+      "Bash(./venv/Scripts/python.exe -c \"from importlib.metadata import version; print\\(version\\('langgraph'\\)\\)\")"
     ]
   }
 }
