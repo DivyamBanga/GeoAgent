@@ -1,12 +1,16 @@
 """
-GeoAgent LangGraph — conditional routing with fan-out/fan-in.
+GeoAgent LangGraph — conditional routing with parallel fan-out/fan-in.
 
 Flow:
-  parse_intent → [conditional routing] → only selected sub-agents → synthesize → END
+                              ┌─→ demographics ─┐
+  parse_intent → router() ──→├─→ competition  ─┤──→ synthesize → END
+                              ├─→ traffic      ─┤
+                              └─→ zoning       ─┘
 
-The intent parser decides which agents to run. The graph uses conditional edges
-to fan-out only to relevant sub-agents, then fans back in to the synthesizer.
-Agents not selected are never called (no wasted API calls).
+- The intent parser decides which agents to run.
+- Conditional edges fan-out ONLY to relevant sub-agents (no wasted API calls).
+- LangGraph runs all selected sub-agents in PARALLEL on a thread pool.
+- The synthesizer waits for all sub-agents to finish, then produces the final answer.
 """
 
 from langgraph.graph import StateGraph, END
