@@ -2102,7 +2102,7 @@ You should now have:
 - [x] Synthesis node that produces scored, explained recommendations
 - [x] LangGraph managing the entire flow
 
-**Demo:** "Should I open a coffee shop in downtown Kitchener?" triggers: intent parsing → 4 sub-agents running in parallel → synthesis → scored recommendation with reasoning.
+**Demo:** "Should I open a coffee shop in downtown Kitchener?" triggers: intent parsing → 4 sub-agents running in parallel → synthesis → scored recommendation with reasoning and report generation.
 
 **File structure:**
 ```
